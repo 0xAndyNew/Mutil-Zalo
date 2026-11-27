@@ -1,0 +1,60 @@
+name: Release Mutil-Zalo
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust gnullvm & gnu toolchains
+        shell: pwsh
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-gnullvm --profile minimal
+          rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal
+
+      - name: Run unit tests
+        shell: pwsh
+        run: |
+          $toolchain = "stable-x86_64-pc-windows-gnullvm"
+          $sysroot = (rustc +$toolchain --print sysroot).Trim()
+          $lld = Join-Path $sysroot "lib\rustlib\x86_64-pc-windows-gnullvm\bin\gcc-ld\ld.lld.exe"
+          $gnuSysroot = (rustc +stable-x86_64-pc-windows-gnu --print sysroot).Trim()
+          $gnuSelfContained = Join-Path $gnuSysroot "lib\rustlib\x86_64-pc-windows-gnu\lib\self-contained"
+          $env:CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_LINKER = $lld
+          $env:RUSTFLAGS = "-C link-self-contained=yes -C linker-flavor=ld -C link-arg=-m -C link-arg=i386pep -C link-arg=-L$gnuSelfContained"
+          cargo +$toolchain test --workspace
+
+      - name: Build single-file Mutil-Zalo.exe
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\build.ps1
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $notes = @"
+          ### Mutil-Zalo $tag (Windows 64-bit — 1 File Duy Nhất)
+
+          - **Trình cài đặt giao diện Windows tích hợp sẵn trong 1 file `Mutil-Zalo.exe` duy nhất**:
+            - Bấm đúp từ thư mục tải về để mở trình cài đặt, **chọn thư mục cài đặt** tùy ý.
+            - Màn hình hoàn tất có tùy chọn tích **Tạo biểu tượng (Shortcut) ngoài Desktop** và nút **Finish** mở ứng dụng ngay.
+            - Tạo shortcut chuẩn Windows COM (`IShellLinkW`), hỗ trợ đầy đủ OneDrive Desktop & đường dẫn tiếng Việt.
+            - Hỗ trợ giao diện Windows 10/11 hiện đại (Common Controls v6 + PerMonitorV2 DPI) và logo Zalo chính thức.
+          "@
+          gh release create $tag dist/Mutil-Zalo.exe `
+            --title "Mutil-Zalo $tag (Windows 64-bit — 1 File Duy Nhất)" `
+            --notes $notes
