@@ -133,6 +133,7 @@
               <p id="installStatusText">Đang chạy trực tiếp từ 1 file duy nhất. Bạn có thể cài cố định để tạo Shortcut ngoài Desktop, Start Menu và mục quản lý trong Windows.</p>
             </div>
             <div class="setting-control row-gap">
+              <button class="btn btn-secondary btn-sm" id="btnCreateDesktopShortcut" title="Tạo biểu tượng Mutil-Zalo ngoài màn hình Desktop">Tạo Shortcut Desktop</button>
               <button class="btn btn-primary" id="btnInstallWindows">Cài đặt vào máy</button>
               <button class="btn btn-danger-outline hidden" id="btnUninstallWindows">Gỡ cài đặt</button>
             </div>
@@ -228,6 +229,41 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <!-- Install Wizard Modal -->
+  <div class="modal-backdrop hidden" id="installModal">
+    <div class="modal-box install-modal-box">
+      <div id="installStep1">
+        <h3 id="installModalTitle">Cài đặt Mutil-Zalo</h3>
+        <div class="field">
+          <label for="inputInstallDir">Thư mục cài đặt</label>
+          <div class="install-dir-row">
+            <input type="text" id="inputInstallDir" placeholder="C:\Users\...\Programs\Mutil-Zalo" />
+            <button type="button" class="btn btn-secondary" id="btnBrowseInstallDir">Chọn...</button>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="btnInstallCancel">Hủy</button>
+          <button type="button" class="btn btn-primary" id="btnInstallNext">Cài đặt</button>
+        </div>
+      </div>
+
+      <div id="installStep2" class="hidden">
+        <div class="install-done-badge">✓ Cài đặt hoàn tất</div>
+        <h3>Mutil-Zalo đã sẵn sàng</h3>
+        <p id="installDonePath"></p>
+        <div class="install-check-list">
+          <label class="install-check-item">
+            <input type="checkbox" id="chkInstallDesktop" checked />
+            <span><strong>Tạo biểu tượng (Shortcut) ngoài Desktop</strong></span>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-primary" id="btnInstallFinish">Finish</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Confirmation Modal -->

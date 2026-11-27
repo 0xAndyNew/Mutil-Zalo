@@ -33,8 +33,22 @@ pub enum UiCommand {
     UpdateSettings { settings: AppSettings },
     TestNotification,
     OpenDataFolder,
-    InstallToWindows,
+    BrowseInstallDir {
+        #[serde(default)]
+        current_dir: Option<String>,
+    },
+    InstallToWindows {
+        #[serde(default)]
+        install_dir: Option<String>,
+        #[serde(default = "default_true")]
+        create_desktop_shortcut: bool,
+    },
+    CreateDesktopShortcut,
     UninstallFromWindows,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -70,6 +84,8 @@ pub struct UiStatePayload {
     pub settings: AppSettings,
     pub settings_open: bool,
     pub is_installed: bool,
+    pub has_desktop_shortcut: bool,
+    pub install_dir: String,
     pub app_version: String,
     pub toast: Option<ToastPayload>,
 }

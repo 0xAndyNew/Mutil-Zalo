@@ -880,6 +880,65 @@ code {
   margin-bottom: 16px;
 }
 
+.install-modal-box {
+  width: min(460px, 92vw);
+}
+
+.install-dir-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.install-dir-row input[type="text"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.install-done-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.14);
+  color: #059669;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+[data-theme="dark"] .install-done-badge {
+  color: #34d399;
+}
+
+.install-check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.install-check-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.install-check-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .toast {
   position: fixed;
   right: 22px;

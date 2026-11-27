@@ -1,21 +1,32 @@
 use std::ffi::OsStr;
 use std::fs;
 use std::os::windows::ffi::OsStrExt;
-use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use crate::icon;
 
 pub const SINGLE_INSTANCE_MUTEX: &str = "Local\\MutilZaloSingleInstanceMutex";
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+#[cfg(windows)]
+use windows::core::{Interface, HSTRING};
+#[cfg(windows)]
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, IPersistFile,
+    CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
+};
+#[cfg(windows)]
+use windows::Win32::UI::Shell::{
+    FileOpenDialog, IFileOpenDialog, IShellItem, IShellLinkW, SHCreateItemFromParsingName,
+    ShellLink, FOS_FORCEFILESYSTEM, FOS_PICKFOLDERS, SIGDN_FILESYSPATH,
+};
 
 #[cfg(windows)]
 use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS, HANDLE, HWND, LPARAM};
 #[cfg(windows)]
 use windows_sys::Win32::System::Registry::{
-    RegCloseKey, RegCreateKeyExW, RegDeleteTreeW, RegDeleteValueW, RegOpenKeyExW, RegSetValueExW,
-    HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, KEY_WRITE, REG_DWORD, REG_OPTION_NON_VOLATILE, REG_SZ,
+    RegCloseKey, RegCreateKeyExW, RegDeleteTreeW, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW,
+    RegSetValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE, KEY_WRITE, REG_DWORD,
+    REG_OPTION_NON_VOLATILE, REG_SZ,
 };
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::CreateMutexW;
@@ -169,11 +180,129 @@ pub fn launcher_exe_path() -> PathBuf {
     std::env::current_exe().unwrap_or_else(|_| PathBuf::from("Mutil-Zalo.exe"))
 }
 
-pub fn install_dir() -> PathBuf {
+pub fn default_install_dir() -> PathBuf {
     dirs::data_local_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("Programs")
         .join("Mutil-Zalo")
+}
+
+#[cfg(windows)]
+fn registered_install_dir() -> Option<PathBuf> {
+    unsafe {
+        let subkey =
+            to_wide_null("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Mutil-Zalo");
+        let value = to_wide_null("InstallLocation");
+        let mut hkey: HKEY = std::ptr::null_mut();
+        if RegOpenKeyExW(HKEY_CURRENT_USER, subkey.as_ptr(), 0, KEY_READ, &mut hkey) != 0 {
+            return None;
+        }
+        let mut byte_len: u32 = 0;
+        if RegQueryValueExW(
+            hkey,
+            value.as_ptr(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut byte_len,
+        ) != 0
+            || byte_len < 4
+        {
+            RegCloseKey(hkey);
+            return None;
+        }
+        let mut buf = vec![0u16; (byte_len as usize + 1) / 2];
+        let ok = RegQueryValueExW(
+            hkey,
+            value.as_ptr(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            buf.as_mut_ptr() as *mut u8,
+            &mut byte_len,
+        ) == 0;
+        RegCloseKey(hkey);
+        if !ok {
+            return None;
+        }
+        let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+        let s = String::from_utf16_lossy(&buf[..end]).trim().to_string();
+        if s.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(s))
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn registered_install_dir() -> Option<PathBuf> {
+    None
+}
+
+pub fn install_dir() -> PathBuf {
+    registered_install_dir().unwrap_or_else(default_install_dir)
+}
+
+pub fn pick_install_folder(owner: &tao::window::Window, current_dir: &Path) -> Option<PathBuf> {
+    #[cfg(windows)]
+    unsafe {
+        use tao::platform::windows::WindowExtWindows;
+        let owner_hwnd = windows::Win32::Foundation::HWND(owner.hwnd() as *mut _);
+        let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let should_uninit = hr.is_ok();
+
+        let picked = (|| -> Option<PathBuf> {
+            let dialog: IFileOpenDialog =
+                CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER).ok()?;
+            let opts = dialog.GetOptions().ok()?;
+            dialog
+                .SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM)
+                .ok()?;
+            dialog
+                .SetTitle(&HSTRING::from("Chọn thư mục cài đặt Mutil-Zalo"))
+                .ok()?;
+
+            let mut probe = current_dir.to_path_buf();
+            while !probe.exists() {
+                if !probe.pop() {
+                    break;
+                }
+            }
+            if probe.exists() {
+                if let Ok(item) = SHCreateItemFromParsingName::<_, _, IShellItem>(
+                    &HSTRING::from(probe.as_os_str()),
+                    None,
+                ) {
+                    let _ = dialog.SetFolder(&item);
+                }
+            }
+
+            dialog.Show(Some(owner_hwnd)).ok()?;
+            let item = dialog.GetResult().ok()?;
+            let pwstr = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
+            let path_str = pwstr.to_string().ok();
+            CoTaskMemFree(Some(pwstr.0 as *const _));
+            path_str.map(|s| {
+                let p = PathBuf::from(s);
+                let named = p
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|n| n.eq_ignore_ascii_case("Mutil-Zalo"))
+                    .unwrap_or(false);
+                if named { p } else { p.join("Mutil-Zalo") }
+            })
+        })();
+
+        if should_uninit {
+            CoUninitialize();
+        }
+        picked
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (owner, current_dir);
+        None
+    }
 }
 
 pub fn installed_exe_path() -> PathBuf {
@@ -182,6 +311,35 @@ pub fn installed_exe_path() -> PathBuf {
 
 pub fn is_installed() -> bool {
     installed_exe_path().exists()
+}
+
+pub fn desktop_shortcut_path() -> Option<PathBuf> {
+    dirs::desktop_dir().map(|d| d.join("Mutil-Zalo.lnk"))
+}
+
+pub fn start_menu_shortcut_path() -> Option<PathBuf> {
+    dirs::data_dir().map(|d| d.join("Microsoft\\Windows\\Start Menu\\Programs\\Mutil-Zalo.lnk"))
+}
+
+pub fn has_desktop_shortcut() -> bool {
+    desktop_shortcut_path().map(|p| p.exists()).unwrap_or(false)
+}
+
+#[derive(Debug, Clone)]
+pub struct InstallOptions {
+    pub install_dir: Option<PathBuf>,
+    pub create_desktop_shortcut: bool,
+    pub create_start_menu_shortcut: bool,
+}
+
+impl Default for InstallOptions {
+    fn default() -> Self {
+        Self {
+            install_dir: None,
+            create_desktop_shortcut: true,
+            create_start_menu_shortcut: true,
+        }
+    }
 }
 
 /// Registers or removes Mutil-Zalo from Windows startup (HKCU\Software\Microsoft\Windows\CurrentVersion\Run).
@@ -232,13 +390,17 @@ pub fn set_start_with_windows(enable: bool) -> Result<(), String> {
     }
 }
 
-/// Installs the single `Mutil-Zalo.exe` into %LOCALAPPDATA%\Programs\Mutil-Zalo, creates Desktop + Start Menu shortcuts and Windows Uninstall entry.
-pub fn install_to_windows() -> Result<String, String> {
-    let dir = install_dir();
+/// Installs the single `Mutil-Zalo.exe` into %LOCALAPPDATA%\Programs\Mutil-Zalo,
+/// creates optional Desktop / Start Menu shortcuts natively via COM, and registers Windows Uninstall entry.
+pub fn install_to_windows(opts: InstallOptions) -> Result<String, String> {
+    let dir = opts
+        .install_dir
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(install_dir);
     fs::create_dir_all(&dir).map_err(|e| format!("Không thể tạo thư mục cài đặt: {e}"))?;
 
     let src_exe = launcher_exe_path();
-    let dst_exe = installed_exe_path();
+    let dst_exe = dir.join("Mutil-Zalo.exe");
     if src_exe.canonicalize().ok() != dst_exe.canonicalize().ok() {
         fs::copy(&src_exe, &dst_exe)
             .map_err(|e| format!("Không thể sao chép file ứng dụng: {e}"))?;
@@ -248,10 +410,79 @@ pub fn install_to_windows() -> Result<String, String> {
     fs::write(&ico_path, icon::generate_ico_bytes())
         .map_err(|e| format!("Không thể ghi icon: {e}"))?;
 
-    create_shortcuts(&dst_exe, &ico_path)?;
+    let workdir = dst_exe.parent().unwrap_or_else(|| Path::new("."));
+    if opts.create_desktop_shortcut {
+        if let Some(desktop) = desktop_shortcut_path() {
+            create_lnk_shortcut(
+                &desktop,
+                &dst_exe,
+                workdir,
+                &ico_path,
+                "Mutil-Zalo - Zalo Web Đa Tài Khoản",
+            )?;
+        }
+    }
+    if opts.create_start_menu_shortcut {
+        if let Some(start_menu) = start_menu_shortcut_path() {
+            create_lnk_shortcut(
+                &start_menu,
+                &dst_exe,
+                workdir,
+                &ico_path,
+                "Mutil-Zalo - Zalo Web Đa Tài Khoản",
+            )?;
+        }
+    }
+
     register_uninstall_entry(&dir, &dst_exe, &ico_path)?;
 
-    Ok(format!("Đã cài đặt Mutil-Zalo thành công tại {}", dir.display()))
+    let mut extras = Vec::new();
+    if opts.create_desktop_shortcut {
+        extras.push("Shortcut Desktop");
+    }
+    if opts.create_start_menu_shortcut {
+        extras.push("Start Menu");
+    }
+    if extras.is_empty() {
+        Ok(format!("Đã cài đặt Mutil-Zalo thành công tại {}", dir.display()))
+    } else {
+        Ok(format!(
+            "Đã cài đặt Mutil-Zalo thành công (đã tạo {}).",
+            extras.join(" & ")
+        ))
+    }
+}
+
+/// Creates or refreshes the Desktop shortcut for Mutil-Zalo immediately.
+pub fn create_desktop_shortcut_now() -> Result<String, String> {
+    let desktop = desktop_shortcut_path()
+        .ok_or_else(|| "Không tìm thấy thư mục Desktop trên Windows.".to_string())?;
+    let target_exe = if is_installed() {
+        installed_exe_path()
+    } else {
+        launcher_exe_path()
+    };
+    let workdir = target_exe.parent().unwrap_or_else(|| Path::new("."));
+
+    let ico_path = if is_installed() {
+        install_dir().join("mutil-zalo.ico")
+    } else {
+        crate::config::AppConfig::app_data_root().join("mutil-zalo.ico")
+    };
+    if let Some(parent) = ico_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    fs::write(&ico_path, icon::generate_ico_bytes())
+        .map_err(|e| format!("Không thể ghi file icon: {e}"))?;
+
+    create_lnk_shortcut(
+        &desktop,
+        &target_exe,
+        workdir,
+        &ico_path,
+        "Mutil-Zalo - Zalo Web Đa Tài Khoản",
+    )?;
+    Ok("Đã tạo biểu tượng (Shortcut) Mutil-Zalo ngoài Desktop.".to_string())
 }
 
 pub fn uninstall_from_windows() -> Result<String, String> {
@@ -269,54 +500,73 @@ pub fn uninstall_from_windows() -> Result<String, String> {
     Ok("Đã gỡ cài đặt shortcut và mục ứng dụng khỏi Windows.".to_string())
 }
 
-fn create_shortcuts(exe_path: &Path, ico_path: &Path) -> Result<(), String> {
-    let desktop = dirs::desktop_dir().map(|d| d.join("Mutil-Zalo.lnk"));
-    let start_menu = dirs::data_dir()
-        .map(|d| d.join("Microsoft\\Windows\\Start Menu\\Programs\\Mutil-Zalo.lnk"));
-
-    let mut script = String::from("$ws = New-Object -ComObject WScript.Shell\n");
-    let target = ps_escape(&exe_path.to_string_lossy());
-    let workdir = ps_escape(
-        &exe_path
-            .parent()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default(),
-    );
-    let ico = ps_escape(&ico_path.to_string_lossy());
-
-    for link in [desktop, start_menu].into_iter().flatten() {
-        let lp = ps_escape(&link.to_string_lossy());
-        script.push_str(&format!(
-            "$s = $ws.CreateShortcut('{lp}'); $s.TargetPath = '{target}'; $s.WorkingDirectory = '{workdir}'; $s.IconLocation = '{ico},0'; $s.Description = 'Mutil-Zalo - Zalo Web Đa Tài Khoản'; $s.Save()\n"
-        ));
+#[cfg(windows)]
+pub fn create_lnk_shortcut(
+    link_path: &Path,
+    target_exe: &Path,
+    working_dir: &Path,
+    ico_path: &Path,
+    description: &str,
+) -> Result<(), String> {
+    if let Some(parent) = link_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Không thể tạo thư mục shortcut: {e}"))?;
     }
 
-    let output = Command::new("powershell.exe")
-        .args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", &script])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| format!("Không thể chạy PowerShell tạo shortcut: {e}"))?;
+    unsafe {
+        let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let should_uninit = hr.is_ok();
 
-    if !output.status.success() {
-        return Err(format!(
-            "Tạo shortcut thất bại: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
+        let res = (|| -> Result<(), String> {
+            let shell_link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)
+                .map_err(|e| format!("Không thể khởi tạo IShellLinkW: {e}"))?;
+            shell_link
+                .SetPath(&HSTRING::from(target_exe.as_os_str()))
+                .map_err(|e| format!("SetPath thất bại: {e}"))?;
+            shell_link
+                .SetWorkingDirectory(&HSTRING::from(working_dir.as_os_str()))
+                .map_err(|e| format!("SetWorkingDirectory thất bại: {e}"))?;
+            shell_link
+                .SetDescription(&HSTRING::from(description))
+                .map_err(|e| format!("SetDescription thất bại: {e}"))?;
+            shell_link
+                .SetIconLocation(&HSTRING::from(ico_path.as_os_str()), 0)
+                .map_err(|e| format!("SetIconLocation thất bại: {e}"))?;
+
+            let persist: IPersistFile = shell_link
+                .cast()
+                .map_err(|e| format!("Không thể lấy IPersistFile: {e}"))?;
+            persist
+                .Save(&HSTRING::from(link_path.as_os_str()), true)
+                .map_err(|e| format!("Lưu shortcut thất bại: {e}"))?;
+            Ok(())
+        })();
+
+        if should_uninit {
+            CoUninitialize();
+        }
+        res
     }
+}
+
+#[cfg(not(windows))]
+pub fn create_lnk_shortcut(
+    _link_path: &Path,
+    _target_exe: &Path,
+    _working_dir: &Path,
+    _ico_path: &Path,
+    _description: &str,
+) -> Result<(), String> {
     Ok(())
 }
 
 fn remove_shortcuts() {
-    if let Some(d) = dirs::desktop_dir() {
-        let _ = fs::remove_file(d.join("Mutil-Zalo.lnk"));
+    if let Some(p) = desktop_shortcut_path() {
+        let _ = fs::remove_file(p);
     }
-    if let Some(d) = dirs::data_dir() {
-        let _ = fs::remove_file(d.join("Microsoft\\Windows\\Start Menu\\Programs\\Mutil-Zalo.lnk"));
+    if let Some(p) = start_menu_shortcut_path() {
+        let _ = fs::remove_file(p);
     }
-}
-
-fn ps_escape(s: &str) -> String {
-    s.replace('\'', "''")
 }
 
 #[cfg(windows)]
@@ -497,5 +747,33 @@ mod tests {
         assert!(!is_zalo_internal_url("https://www.youtube.com/watch?v=1"));
         assert!(!is_zalo_internal_url("https://fakezalo.me/phish"));
         assert!(!is_zalo_internal_url("https://google.com"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn creates_real_windows_lnk_shortcut_via_com() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let tmp = std::env::temp_dir().join(format!("mutil-zalo-core-lnk-{ts}"));
+        let link = tmp.join("Mutil-Zalo.lnk");
+        let target = std::env::current_exe().unwrap();
+        let workdir = target.parent().unwrap();
+
+        create_lnk_shortcut(
+            &link,
+            &target,
+            workdir,
+            &target,
+            "Mutil-Zalo - Zalo Web Đa Tài Khoản",
+        )
+        .expect("create_lnk_shortcut should succeed");
+
+        let bytes = fs::read(&link).expect("shortcut file should exist");
+        assert!(bytes.len() > 76);
+        assert_eq!(&bytes[0..4], &[0x4C, 0x00, 0x00, 0x00]);
+        let _ = fs::remove_dir_all(&tmp);
     }
 }

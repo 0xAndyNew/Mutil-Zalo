@@ -92,6 +92,8 @@ fn push_ui_state(
         settings: cfg.settings.clone(),
         settings_open,
         is_installed: win_utils::is_installed(),
+        has_desktop_shortcut: win_utils::has_desktop_shortcut(),
+        install_dir: win_utils::install_dir().to_string_lossy().to_string(),
         app_version: env!("CARGO_PKG_VERSION").to_string(),
         toast,
     };
@@ -621,8 +623,40 @@ fn main() {
                             let _ = fs::create_dir_all(&dir);
                             win_utils::open_external(&dir.to_string_lossy());
                         }
-                        UiCommand::InstallToWindows => {
-                            let toast = match win_utils::install_to_windows() {
+                        UiCommand::BrowseInstallDir { current_dir } => {
+                            let start_dir = current_dir
+                                .as_deref()
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty())
+                                .map(std::path::PathBuf::from)
+                                .unwrap_or_else(win_utils::install_dir);
+                            if let Some(picked) = win_utils::pick_install_folder(&window, &start_dir)
+                            {
+                                if let Ok(json) =
+                                    serde_json::to_string(&picked.to_string_lossy().to_string())
+                                {
+                                    let script = format!(
+                                        "window.__mutilZaloSetInstallDir && window.__mutilZaloSetInstallDir({json});"
+                                    );
+                                    let _ = ui_webview.evaluate_script(&script);
+                                }
+                            }
+                        }
+                        UiCommand::InstallToWindows {
+                            install_dir,
+                            create_desktop_shortcut,
+                        } => {
+                            let custom_dir = install_dir
+                                .as_deref()
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty())
+                                .map(std::path::PathBuf::from);
+                            let opts = win_utils::InstallOptions {
+                                install_dir: custom_dir,
+                                create_desktop_shortcut,
+                                create_start_menu_shortcut: true,
+                            };
+                            let toast = match win_utils::install_to_windows(opts) {
                                 Ok(msg) => {
                                     if cfg.settings.start_with_windows {
                                         let _ = win_utils::set_start_with_windows(true);
@@ -632,6 +666,19 @@ fn main() {
                                         message: msg,
                                     }
                                 }
+                                Err(e) => ToastPayload {
+                                    kind: "error".into(),
+                                    message: e,
+                                },
+                            };
+                            push_ui_state(&ui_webview, &cfg, &manager, settings_open, Some(toast));
+                        }
+                        UiCommand::CreateDesktopShortcut => {
+                            let toast = match win_utils::create_desktop_shortcut_now() {
+                                Ok(msg) => ToastPayload {
+                                    kind: "success".into(),
+                                    message: msg,
+                                },
                                 Err(e) => ToastPayload {
                                     kind: "error".into(),
                                     message: e,

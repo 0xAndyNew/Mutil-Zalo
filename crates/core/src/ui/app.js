@@ -19,6 +19,8 @@
     },
     settings_open: false,
     is_installed: false,
+    has_desktop_shortcut: false,
+    install_dir: '',
     app_version: '1.0.0'
   };
 
@@ -70,6 +72,27 @@
     confirmCallback = null;
     $('confirmModal').classList.add('hidden');
   }
+
+  function openInstallModal() {
+    $('installModalTitle').textContent = state.is_installed
+      ? 'Cập nhật cài đặt Mutil-Zalo'
+      : 'Cài đặt Mutil-Zalo';
+    $('inputInstallDir').value = state.install_dir || '';
+    $('installStep1').classList.remove('hidden');
+    $('installStep2').classList.add('hidden');
+    $('chkInstallDesktop').checked = true;
+    $('installModal').classList.remove('hidden');
+  }
+
+  function closeInstallModal() {
+    $('installModal').classList.add('hidden');
+  }
+
+  window.__mutilZaloSetInstallDir = function (dir) {
+    if (typeof dir === 'string' && dir.trim()) {
+      $('inputInstallDir').value = dir;
+    }
+  };
 
   function renderColorPicker() {
     const host = $('colorPicker');
@@ -257,14 +280,19 @@
     });
 
     if (state.is_installed) {
-      $('installStatusText').textContent = 'Mutil-Zalo đã được cài đặt trên Windows (có Shortcut Desktop & Start Menu). Bạn có thể cài đè để cập nhật hoặc gỡ cài đặt.';
+      $('installStatusText').textContent = state.has_desktop_shortcut
+        ? 'Mutil-Zalo đã được cài đặt trên Windows (đã có biểu tượng Shortcut ngoài Desktop & Start Menu).'
+        : 'Mutil-Zalo đã được cài đặt trên Windows (chưa có Shortcut ngoài Desktop). Bạn có thể tạo nhanh hoặc cập nhật cài đặt.';
       $('btnInstallWindows').textContent = 'Cập nhật cài đặt';
       $('btnUninstallWindows').classList.remove('hidden');
     } else {
-      $('installStatusText').textContent = 'Đang chạy trực tiếp từ 1 file duy nhất. Bấm nút bên phải để cài vào máy, tạo Shortcut Desktop & Start Menu.';
+      $('installStatusText').textContent = 'Đang chạy trực tiếp từ 1 file duy nhất. Bấm cài đặt vào máy (có tùy chọn tạo Shortcut ngoài Desktop) hoặc tạo nhanh Shortcut Desktop.';
       $('btnInstallWindows').textContent = 'Cài đặt vào máy';
       $('btnUninstallWindows').classList.add('hidden');
     }
+    $('btnCreateDesktopShortcut').textContent = state.has_desktop_shortcut
+      ? 'Tạo lại Shortcut Desktop'
+      : 'Tạo Shortcut Desktop';
   }
 
   function pushSettingsPatch(patch) {
@@ -373,7 +401,32 @@
   });
 
   $('btnOpenDataDir').addEventListener('click', () => send({ type: 'open_data_folder' }));
-  $('btnInstallWindows').addEventListener('click', () => send({ type: 'install_to_windows' }));
+  $('btnCreateDesktopShortcut').addEventListener('click', () => send({ type: 'create_desktop_shortcut' }));
+  $('btnInstallWindows').addEventListener('click', openInstallModal);
+  $('btnBrowseInstallDir').addEventListener('click', () => {
+    send({ type: 'browse_install_dir', current_dir: $('inputInstallDir').value.trim() });
+  });
+  $('btnInstallCancel').addEventListener('click', closeInstallModal);
+  $('btnInstallNext').addEventListener('click', () => {
+    const dir = $('inputInstallDir').value.trim();
+    if (!dir) {
+      showToast('error', 'Vui lòng chọn thư mục cài đặt.');
+      return;
+    }
+    $('installDonePath').textContent = 'Thư mục cài đặt: ' + dir;
+    $('installStep1').classList.add('hidden');
+    $('installStep2').classList.remove('hidden');
+  });
+  $('btnInstallFinish').addEventListener('click', () => {
+    const install_dir = $('inputInstallDir').value.trim();
+    const create_desktop_shortcut = $('chkInstallDesktop').checked;
+    closeInstallModal();
+    send({
+      type: 'install_to_windows',
+      install_dir,
+      create_desktop_shortcut
+    });
+  });
   $('btnUninstallWindows').addEventListener('click', () => {
     openConfirm(
       'Gỡ cài đặt Mutil-Zalo?',
@@ -392,7 +445,9 @@
   // Keyboard shortcuts
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      if (!$('confirmModal').classList.contains('hidden')) {
+      if (!$('installModal').classList.contains('hidden')) {
+        closeInstallModal();
+      } else if (!$('confirmModal').classList.contains('hidden')) {
         closeConfirm();
       } else if (state.settings_open) {
         send({ type: 'set_settings_open', open: false });

@@ -1253,6 +1253,7 @@ name = "mutil-zalo"
 version = "1.0.0"
 dependencies = [
  "flate2",
+ "windows",
  "windows-sys 0.61.2",
 ]
 

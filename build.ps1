@@ -80,7 +80,45 @@ public static class PeIconEmbedder {
             throw;
         }
     }
+
+    public static void EmbedManifest(string exePath, string manifestXml) {
+        byte[] data = System.Text.Encoding.UTF8.GetBytes(manifestXml);
+        IntPtr hUpdate = BeginUpdateResource(exePath, false);
+        if (hUpdate == IntPtr.Zero) {
+            throw new Exception("BeginUpdateResource(manifest) failed: " + Marshal.GetLastWin32Error());
+        }
+        try {
+            // RT_MANIFEST = 24, CREATEPROCESS_MANIFEST_RESOURCE_ID = 1
+            if (!UpdateResource(hUpdate, (IntPtr)24, (IntPtr)1, 0, data, (uint)data.Length)) {
+                throw new Exception("UpdateResource(RT_MANIFEST) failed: " + Marshal.GetLastWin32Error());
+            }
+            if (!EndUpdateResource(hUpdate, false)) {
+                throw new Exception("EndUpdateResource(manifest) failed: " + Marshal.GetLastWin32Error());
+            }
+        } catch {
+            EndUpdateResource(hUpdate, true);
+            throw;
+        }
+    }
 }
+"@
+
+$launcherManifest = @"
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity version="1.0.0.0" processorArchitecture="amd64" name="MutilZalo" type="win32"/>
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"/>
+    </dependentAssembly>
+  </dependency>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2, System</dpiAwareness>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true</dpiAware>
+    </windowsSettings>
+  </application>
+</assembly>
 "@
 
 # Use Rustup's self-contained windows-gnullvm + ld.lld.exe (no Visual Studio or external MinGW required)
@@ -142,7 +180,7 @@ $env:MUTIL_ZALO_STAGING_DIR = $stagingDir
 cargo +$toolchain build --release -p mutil-zalo
 if ($LASTEXITCODE -ne 0) { throw "Build mutil-zalo single-file launcher failed!" }
 
-Write-Host "=== [4/4] Exporting single file & embedding Zalo icon into dist\Mutil-Zalo.exe ===" -ForegroundColor Cyan
+Write-Host "=== [4/4] Exporting single file dist\Mutil-Zalo.exe (embedded Zalo icon + manifest) ===" -ForegroundColor Cyan
 $distDir = Join-Path $PSScriptRoot "dist"
 if (Test-Path $distDir) {
     Remove-Item -Recurse -Force $distDir
@@ -153,8 +191,9 @@ $builtSingleExe = Join-Path $PSScriptRoot "target\release\Mutil-Zalo.exe"
 $finalExe = Join-Path $distDir "Mutil-Zalo.exe"
 Copy-Item -Force $builtSingleExe $finalExe
 [PeIconEmbedder]::EmbedIco($finalExe, $icoPath)
+[PeIconEmbedder]::EmbedManifest($finalExe, $launcherManifest)
 
 $sizeMB = [Math]::Round((Get-Item $finalExe).Length / 1MB, 2)
 Write-Host ""
-Write-Host "BUILD THANH CONG! (1 FILE DUY NHAT + LOGO ZALO)" -ForegroundColor Green
+Write-Host "BUILD THANH CONG! (1 FILE DUY NHAT + INSTALLER + LOGO ZALO)" -ForegroundColor Green
 Write-Host "  Output: $finalExe ($sizeMB MB)" -ForegroundColor Yellow

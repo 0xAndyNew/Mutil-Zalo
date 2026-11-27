@@ -53,11 +53,14 @@
 
 ### Cài Đặt / Gỡ Cài Đặt Trên Windows
 
-- **Trong ứng dụng**: Mở **`⚙` Cài đặt → tab Cài đặt ứng dụng → Cài đặt vào máy** (tạo Shortcut Desktop, Start Menu và mục gỡ cài đặt trong Windows Settings).
+- **Bấm đúp trực tiếp `Mutil-Zalo.exe`** *(1 file duy nhất)*: Khi mở từ thư mục tải về, trình cài đặt sẽ hiện lên cho phép **chọn thư mục cài đặt** và ở bước hoàn tất tích chọn **Tạo biểu tượng (Shortcut) ngoài Desktop** rồi bấm **Finish** (tự mở Mutil-Zalo ngay). Các lần sau mở từ Shortcut Desktop / Start Menu sẽ chạy thẳng ứng dụng.
+- **Trong ứng dụng**: Mở **`⚙` Cài đặt → tab Cài đặt ứng dụng → Cài đặt vào máy** hoặc bấm nút **Tạo Shortcut Desktop** bất cứ lúc nào.
 - **Qua dòng lệnh**:
   ```powershell
-  .\Mutil-Zalo.exe --install
-  .\Mutil-Zalo.exe --uninstall
+  .\Mutil-Zalo.exe --install                         # Mở trình cài đặt giao diện
+  .\Mutil-Zalo.exe --install --silent                # Cài đặt im lặng (hỗ trợ --dir <path> và --no-desktop)
+  .\Mutil-Zalo.exe --run                             # Chạy trực tiếp không cần cài đặt
+  .\Mutil-Zalo.exe --uninstall                       # Gỡ cài đặt
   ```
 
 ---

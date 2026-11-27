@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod installer;
+
 use flate2::read::GzDecoder;
 use std::env;
 use std::ffi::OsStr;
@@ -23,20 +25,19 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS, HWND, LPARAM};
 #[cfg(windows)]
 use windows_sys::Win32::System::Registry::{
-    RegCloseKey, RegCreateKeyExW, RegDeleteTreeW, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW,
-    RegSetValueExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_SET_VALUE,
-    KEY_WRITE, REG_DWORD, REG_OPTION_NON_VOLATILE, REG_SZ,
+    RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE,
+    KEY_READ,
 };
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::CreateMutexW;
 #[cfg(windows)]
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetWindowTextLengthW, GetWindowTextW, IsIconic, IsWindow, MessageBoxW,
-    SetForegroundWindow, ShowWindow, IDOK, MB_ICONERROR, MB_ICONINFORMATION, MB_ICONQUESTION,
-    MB_OK, MB_OKCANCEL, SW_RESTORE, SW_SHOW,
+    SetForegroundWindow, ShowWindow, IDOK, MB_ICONERROR, MB_ICONQUESTION, MB_OK, MB_OKCANCEL,
+    SW_RESTORE, SW_SHOW,
 };
 
-fn to_wide_null(s: &str) -> Vec<u16> {
+pub(crate) fn to_wide_null(s: &str) -> Vec<u16> {
     OsStr::new(s)
         .encode_wide()
         .chain(std::iter::once(0))
@@ -44,7 +45,7 @@ fn to_wide_null(s: &str) -> Vec<u16> {
 }
 
 #[cfg(windows)]
-fn msg_box(title: &str, text: &str, flags: u32) -> i32 {
+pub(crate) fn msg_box(title: &str, text: &str, flags: u32) -> i32 {
     unsafe {
         let t = to_wide_null(title);
         let m = to_wide_null(text);
@@ -53,7 +54,7 @@ fn msg_box(title: &str, text: &str, flags: u32) -> i32 {
 }
 
 #[cfg(not(windows))]
-fn msg_box(_title: &str, _text: &str, _flags: u32) -> i32 {
+pub(crate) fn msg_box(_title: &str, _text: &str, _flags: u32) -> i32 {
     0
 }
 
@@ -63,23 +64,11 @@ fn local_app_data() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
-fn roaming_app_data() -> PathBuf {
-    env::var_os("APPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(local_app_data)
-}
-
-fn desktop_dir() -> PathBuf {
-    env::var_os("USERPROFILE")
-        .map(|p| PathBuf::from(p).join("Desktop"))
-        .unwrap_or_else(|| PathBuf::from("."))
-}
-
-fn runtime_root() -> PathBuf {
+pub(crate) fn runtime_root() -> PathBuf {
     local_app_data().join("Mutil-Zalo").join("runtime")
 }
 
-fn install_dir() -> PathBuf {
+pub(crate) fn install_dir() -> PathBuf {
     local_app_data().join("Programs").join("Mutil-Zalo")
 }
 
@@ -193,7 +182,7 @@ fn is_webview2_installed() -> bool {
     true
 }
 
-fn ensure_webview2() -> bool {
+pub(crate) fn ensure_webview2() -> bool {
     if is_webview2_installed() {
         return true;
     }
@@ -253,7 +242,7 @@ fn gunzip_bytes(gz: &[u8]) -> Result<Vec<u8>, std::io::Error> {
     Ok(out)
 }
 
-fn unpack_runtime_if_needed() -> Result<PathBuf, String> {
+pub(crate) fn unpack_runtime_if_needed() -> Result<PathBuf, String> {
     let root = runtime_root();
     let version_dir = root.join(PAYLOAD_HASH);
     let core_path = version_dir.join("mutil-zalo-core.exe");
@@ -299,146 +288,24 @@ fn unpack_runtime_if_needed() -> Result<PathBuf, String> {
     Ok(core_path)
 }
 
-fn run_cli_install() {
-    let dir = install_dir();
-    let _ = fs::create_dir_all(&dir);
-    let dst_exe = dir.join("Mutil-Zalo.exe");
-    if let Ok(src) = env::current_exe() {
-        if src.canonicalize().ok() != dst_exe.canonicalize().ok() {
-            if let Err(e) = fs::copy(&src, &dst_exe) {
-                msg_box(
-                    "Mutil-Zalo — Lỗi cài đặt",
-                    &format!("Không thể sao chép file cài đặt: {e}"),
-                    MB_OK | MB_ICONERROR,
-                );
-                return;
-            }
-        }
-    }
-
-    let desktop = desktop_dir().join("Mutil-Zalo.lnk");
-    let start_menu =
-        roaming_app_data().join("Microsoft\\Windows\\Start Menu\\Programs\\Mutil-Zalo.lnk");
-    let target = dst_exe.to_string_lossy().replace('\'', "''");
-    let workdir = dir.to_string_lossy().replace('\'', "''");
-    let mut script = String::from("$ws = New-Object -ComObject WScript.Shell\n");
-    for link in [desktop, start_menu] {
-        let lp = link.to_string_lossy().replace('\'', "''");
-        script.push_str(&format!(
-            "$s = $ws.CreateShortcut('{lp}'); $s.TargetPath = '{target}'; $s.WorkingDirectory = '{workdir}'; $s.IconLocation = '{target},0'; $s.Description = 'Mutil-Zalo - Zalo Web Đa Tài Khoản'; $s.Save()\n"
-        ));
-    }
-    let _ = Command::new("powershell.exe")
-        .args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", &script])
-        .creation_flags(CREATE_NO_WINDOW)
-        .status();
-
-    #[cfg(windows)]
-    unsafe {
-        let subkey =
-            to_wide_null("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Mutil-Zalo");
-        let mut hkey: HKEY = std::ptr::null_mut();
-        if RegCreateKeyExW(
-            HKEY_CURRENT_USER,
-            subkey.as_ptr(),
-            0,
-            std::ptr::null(),
-            REG_OPTION_NON_VOLATILE,
-            KEY_WRITE,
-            std::ptr::null(),
-            &mut hkey,
-            std::ptr::null_mut(),
-        ) == 0
-        {
-            let pairs = [
-                ("DisplayName", "Mutil-Zalo (Zalo Web Đa Tài Khoản)".to_string()),
-                ("DisplayVersion", env!("CARGO_PKG_VERSION").to_string()),
-                ("Publisher", "Mutil-Zalo".to_string()),
-                ("InstallLocation", dir.to_string_lossy().to_string()),
-                (
-                    "UninstallString",
-                    format!("\"{}\" --uninstall", dst_exe.to_string_lossy()),
-                ),
-            ];
-            for (k, v) in pairs {
-                let kw = to_wide_null(k);
-                let vw = to_wide_null(&v);
-                RegSetValueExW(
-                    hkey,
-                    kw.as_ptr(),
-                    0,
-                    REG_SZ,
-                    vw.as_ptr() as *const u8,
-                    (vw.len() * 2) as u32,
-                );
-            }
-            for k in ["NoModify", "NoRepair"] {
-                let kw = to_wide_null(k);
-                let one: u32 = 1;
-                RegSetValueExW(hkey, kw.as_ptr(), 0, REG_DWORD, &one as *const u32 as *const u8, 4);
-            }
-            RegCloseKey(hkey);
-        }
-    }
-
-    msg_box(
-        "Mutil-Zalo",
-        &format!(
-            "Đã cài đặt Mutil-Zalo thành công!\n\nThư mục: {}\nĐã tạo shortcut trên Desktop và Start Menu.",
-            dir.display()
-        ),
-        MB_OK | MB_ICONINFORMATION,
-    );
-}
-
-fn run_cli_uninstall() {
-    let _ = fs::remove_file(desktop_dir().join("Mutil-Zalo.lnk"));
-    let _ = fs::remove_file(
-        roaming_app_data().join("Microsoft\\Windows\\Start Menu\\Programs\\Mutil-Zalo.lnk"),
-    );
-
-    #[cfg(windows)]
-    unsafe {
-        let run_key = to_wide_null("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
-        let val = to_wide_null("Mutil-Zalo");
-        let mut hkey: HKEY = std::ptr::null_mut();
-        if RegOpenKeyExW(HKEY_CURRENT_USER, run_key.as_ptr(), 0, KEY_SET_VALUE, &mut hkey) == 0 {
-            let _ = RegDeleteValueW(hkey, val.as_ptr());
-            RegCloseKey(hkey);
-        }
-        let uninst =
-            to_wide_null("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Mutil-Zalo");
-        let _ = RegDeleteTreeW(HKEY_CURRENT_USER, uninst.as_ptr());
-    }
-
-    let dir = install_dir();
-    let _ = fs::remove_dir_all(runtime_root());
-
-    // Schedule removal of install dir after process exits
-    let cmd = format!(
-        "ping 127.0.0.1 -n 2 > nul & rmdir /s /q \"{}\"",
-        dir.display()
-    );
-    let _ = Command::new("cmd.exe")
-        .args(["/C", &cmd])
-        .creation_flags(CREATE_NO_WINDOW)
-        .spawn();
-
-    msg_box(
-        "Mutil-Zalo",
-        "Đã gỡ cài đặt Mutil-Zalo khỏi Windows.\n(Dữ liệu phiên Zalo trong AppData được giữ an toàn nếu bạn muốn dùng lại.)",
-        MB_OK | MB_ICONINFORMATION,
-    );
-}
-
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
-    if args.iter().any(|a| a == "--install") {
-        run_cli_install();
+    if args.iter().any(|a| a.eq_ignore_ascii_case("--uninstall")) {
+        installer::run_cli_uninstall();
         return;
     }
-    if args.iter().any(|a| a == "--uninstall") {
-        run_cli_uninstall();
+
+    let current_exe = env::current_exe().unwrap_or_else(|_| PathBuf::from("Mutil-Zalo.exe"));
+    let installed_exe = installer::active_installed_exe();
+    if installer::should_launch_installer(&current_exe, installed_exe.as_deref(), &args) {
+        let silent = args
+            .iter()
+            .any(|a| a.eq_ignore_ascii_case("--silent") || a.eq_ignore_ascii_case("/S") || a == "-s");
+        if silent {
+            installer::run_silent_install(&args);
+        } else {
+            installer::run_gui_installer();
+        }
         return;
     }
 
