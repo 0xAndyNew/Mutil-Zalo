@@ -325,7 +325,7 @@ fn run_cli_install() {
     for link in [desktop, start_menu] {
         let lp = link.to_string_lossy().replace('\'', "''");
         script.push_str(&format!(
-            "$s = $ws.CreateShortcut('{lp}'); $s.TargetPath = '{target}'; $s.WorkingDirectory = '{workdir}'; $s.Description = 'Mutil-Zalo - Zalo Web Đa Tài Khoản'; $s.Save()\n"
+            "$s = $ws.CreateShortcut('{lp}'); $s.TargetPath = '{target}'; $s.WorkingDirectory = '{workdir}'; $s.IconLocation = '{target},0'; $s.Description = 'Mutil-Zalo - Zalo Web Đa Tài Khoản'; $s.Save()\n"
         ));
     }
     let _ = Command::new("powershell.exe")

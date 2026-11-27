@@ -39,8 +39,12 @@ pub fn init_notifications() {
     if let Some(parent) = ico_path.parent() {
         let _ = fs::create_dir_all(parent);
     }
-    if !ico_path.exists() {
-        let _ = fs::write(&ico_path, icon::generate_ico_bytes());
+    let ico_bytes = icon::generate_ico_bytes();
+    let needs_write = fs::metadata(&ico_path)
+        .map(|m| m.len() != ico_bytes.len() as u64)
+        .unwrap_or(true);
+    if needs_write {
+        let _ = fs::write(&ico_path, &ico_bytes);
     }
 
     #[cfg(windows)]
