@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mutil-Zalo</title>
+  <style>
+/*__STYLES__*/
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <!-- Ultra-slim 16px pull-handle shown ONLY when sidebar is collapsed -->
+    <button class="collapsed-strip" id="collapsedStrip" title="Mở thanh chuyển tài khoản Zalo (Ctrl+B)">
+      <span class="collapsed-unread-dot hidden" id="collapsedUnreadDot"></span>
+      <span class="collapsed-chevron">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      </span>
+    </button>
+
+    <!-- Left compact sidebar (68px) -->
+    <aside class="sidebar" id="sidebar" aria-label="Thanh chuyển tài khoản Zalo">
+      <nav class="account-rail" id="accountRail"></nav>
+
+      <div class="rail-actions">
+        <button class="rail-btn add-btn" id="btnQuickAdd" title="Thêm tài khoản Zalo mới">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+
+        <div class="divider"></div>
+
+        <button class="rail-btn" id="btnReload" title="Tải lại tài khoản Zalo hiện tại">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+            <polyline points="21 3 21 9 15 9"></polyline>
+          </svg>
+        </button>
+
+        <button class="rail-btn" id="btnHideToTray" title="Chạy ẩn xuống khay hệ thống">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 5v11"></path>
+            <polyline points="7 11 12 16 17 11"></polyline>
+            <line x1="5" y1="20" x2="19" y2="20"></line>
+          </svg>
+        </button>
+
+        <button class="rail-btn settings-btn" id="btnSettings" title="Cài đặt & Chuyển đổi tài khoản (Ctrl+,)">
+          <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+
+        <button class="rail-btn collapse-bottom-btn" id="btnCollapseSidebar" title="Thu gọn thanh bên trái (Ctrl+B)">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="11 17 6 12 11 7"></polyline>
+            <polyline points="18 17 13 12 18 7"></polyline>
+          </svg>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Settings & Account Switcher Workspace (shown when Settings is open) -->
+    <main class="settings-panel" id="settingsPanel">
+      <header class="panel-header">
+        <div>
+          <h1>Cài đặt & Chuyển đổi Tài khoản</h1>
+          <p class="subtitle">Chuyển đổi qua lại nhiều tài khoản <strong>chat.zalo.me</strong> tức thì — không đăng xuất, giữ nguyên phiên & nhận thông báo nền.</p>
+        </div>
+        <button class="btn btn-primary" id="btnBackToZalo">
+          Quay lại Zalo <span class="kbd">Esc</span>
+        </button>
+      </header>
+
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="accounts">Tài khoản Zalo</button>
+        <button class="tab-btn" data-tab="system">Cài đặt ứng dụng</button>
+      </div>
+
+      <!-- TAB 1: ACCOUNTS -->
+      <section class="tab-content active" id="tab-accounts">
+        <div class="section-row">
+          <div>
+            <h2>Danh sách tài khoản (<span id="accountCount">0</span>)</h2>
+            <p class="hint">Bấm <strong>Chuyển sang</strong> để đổi tài khoản mà không đăng xuất. Phím tắt: <code>Ctrl+1..9</code> đổi nhanh, <code>Ctrl+B</code> ẩn/hiện thanh bên trái.</p>
+          </div>
+          <button class="btn btn-primary" id="btnShowAddForm">+ Thêm tài khoản mới</button>
+        </div>
+
+        <div class="account-grid" id="accountGrid"></div>
+
+        <!-- Inline Add / Edit Form -->
+        <div class="card form-card hidden" id="accountFormCard">
+          <div class="form-header">
+            <h3 id="formTitle">Thêm tài khoản Zalo mới</h3>
+            <button class="btn-icon" id="btnCloseForm" title="Đóng">✕</button>
+          </div>
+          <form id="accountForm">
+            <input type="hidden" id="editAccountId" />
+            <div class="form-grid">
+              <div class="field">
+                <label for="inputName">Tên hiển thị</label>
+                <input type="text" id="inputName" placeholder="VD: Zalo Cá nhân, Zalo Công việc, CSKH..." maxlength="40" required />
+              </div>
+              <div class="field">
+                <label for="inputNote">Ghi chú (tùy chọn)</label>
+                <input type="text" id="inputNote" placeholder="VD: Số 09xx, nhóm bán hàng..." maxlength="60" />
+              </div>
+            </div>
+            <div class="field">
+              <label>Màu nhận diện trên thanh chuyển nhanh</label>
+              <div class="color-picker" id="colorPicker"></div>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn btn-secondary" id="btnCancelForm">Hủy</button>
+              <button type="submit" class="btn btn-primary" id="btnSubmitForm">Thêm & Mở Zalo mới</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- TAB 2: SYSTEM SETTINGS -->
+      <section class="tab-content" id="tab-system">
+        <div class="settings-list">
+          <div class="card setting-item highlight-card">
+            <div class="setting-info">
+              <h3>Cài đặt Mutil-Zalo vào Windows</h3>
+              <p id="installStatusText">Đang chạy trực tiếp từ 1 file duy nhất. Bạn có thể cài cố định để tạo Shortcut ngoài Desktop, Start Menu và mục quản lý trong Windows.</p>
+            </div>
+            <div class="setting-control row-gap">
+              <button class="btn btn-primary" id="btnInstallWindows">Cài đặt vào máy</button>
+              <button class="btn btn-danger-outline hidden" id="btnUninstallWindows">Gỡ cài đặt</button>
+            </div>
+          </div>
+
+          <div class="card setting-item">
+            <div class="setting-info">
+              <h3>Thông báo tin nhắn Windows (Desktop Notification)</h3>
+              <p>Hiện thông báo góc màn hình kèm âm thanh khi có tin nhắn mới ở bất kỳ tài khoản nào (kể cả khi ẩn xuống khay hệ thống). Bấm vào thông báo sẽ mở đúng tài khoản đó.</p>
+            </div>
+            <div class="setting-control row-gap">
+              <button type="button" class="btn btn-secondary btn-sm" id="btnTestNotify">Thử thông báo</button>
+              <label class="switch">
+                <input type="checkbox" id="optEnableNotifications" />
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="card setting-item">
+            <div class="setting-info">
+              <h3>Tự động thu gọn thanh chuyển tài khoản (<code>Ctrl+B</code>)</h3>
+              <p>Khi bật: tự ẩn thanh thành mép xanh bên trái ngay sau khi bạn chọn tài khoản. Khi cần đổi nick, bấm mũi tên ở mép trái để mở lại.</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="optAutoHideSidebar" />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="card setting-item">
+            <div class="setting-info">
+              <h3>Chạy ẩn thu vào khay hệ thống khi bấm đóng (X)</h3>
+              <p>Giữ tất cả tài khoản Zalo chạy nền để liên tục nhận tin nhắn mới. Nhấp vào biểu tượng khay hệ thống (góc phải Taskbar) để mở lại hoặc chuyển tài khoản.</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="optMinimizeTray" />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="card setting-item">
+            <div class="setting-info">
+              <h3>Tự khởi động cùng Windows</h3>
+              <p>Mở sẵn Mutil-Zalo khi bật máy tính.</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="optStartWindows" />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="card setting-item">
+            <div class="setting-info">
+              <h3>Tự mở sẵn tất cả tài khoản chạy nền khi khởi động</h3>
+              <p>Nên bật để nhận thông báo tin nhắn mới từ mọi tài khoản ngay lập tức. Tắt nếu muốn tiết kiệm RAM (chỉ tải tài khoản khi bấm vào).</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="optPreloadAll" />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="card setting-item">
+            <div class="setting-info">
+              <h3>Giao diện thanh điều khiển & Cài đặt</h3>
+              <p>Chọn tông màu sáng hoặc tối cho giao diện ứng dụng.</p>
+            </div>
+            <div class="segmented" id="themeSegmented">
+              <button type="button" data-theme="light">Sáng</button>
+              <button type="button" data-theme="dark">Tối</button>
+            </div>
+          </div>
+
+          <div class="card setting-item">
+            <div class="setting-info">
+              <h3>Tỉ lệ hiển thị Zalo Web (<span id="zoomLabel">100%</span>)</h3>
+              <p>Phóng to hoặc thu nhỏ giao diện chat.zalo.me trên tất cả các tài khoản.</p>
+            </div>
+            <div class="setting-control row-gap">
+              <input type="range" id="optZoom" min="75" max="150" step="5" value="100" />
+              <button type="button" class="btn btn-secondary btn-sm" id="btnResetZoom">100%</button>
+            </div>
+          </div>
+
+          <div class="card setting-item">
+            <div class="setting-info">
+              <h3>Thư mục lưu dữ liệu phiên & cấu hình</h3>
+              <p>Nơi lưu các hồ sơ WebView2 cô lập của từng tài khoản Zalo. Phiên bản <span id="appVersion">1.0.0</span>.</p>
+            </div>
+            <button type="button" class="btn btn-secondary" id="btnOpenDataDir">Mở thư mục</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div class="modal-backdrop hidden" id="confirmModal">
+    <div class="modal-box">
+      <h3 id="confirmTitle">Xác nhận</h3>
+      <p id="confirmMessage"></p>
+      <div class="form-actions">
+        <button class="btn btn-secondary" id="btnConfirmCancel">Hủy</button>
+        <button class="btn btn-danger" id="btnConfirmOk">Xác nhận</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast hidden" id="toast"></div>
+
+  <script>
+/*__SCRIPT__*/
+  </script>
+</body>
+</html>
